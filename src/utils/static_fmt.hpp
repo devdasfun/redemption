@@ -128,6 +128,17 @@ namespace detail
         return fmt;
     }
 
+    template<class C, C... cs>
+    struct fff
+    {
+        static constexpr decltype(detail::make_static_fmt<cs...>()) value
+            = detail::make_static_fmt<cs...>();
+    };
+    template<class C, C... cs>
+    constexpr decltype(detail::make_static_fmt<cs...>()) fff<C, cs...>::value;
+
+
+
     struct static_fmt_no_error {};
 
     template<std::size_t Offset, std::size_t FmtCount, char Fmt>
@@ -143,7 +154,9 @@ namespace detail
 
     template<char fmt>
     struct static_fmt_x_convertor
-    {};
+    {
+            static_assert(fmt != fmt, "");
+    };
 
     template<>
     struct static_fmt_x_convertor<'s'>
@@ -152,7 +165,12 @@ namespace detail
         static auto convert(T const& x)
         {
             if constexpr (std::is_integral_v<T>) {
-                return int_to_decimal_chars(x);
+                if constexpr (std::is_same_v<T, bool>) {
+                    return x ? '1' : '0';
+                }
+                else {
+                    return int_to_decimal_chars(x);
+                }
             }
             else {
                 return to_static_string_view_or_char(x);
@@ -178,6 +196,7 @@ namespace detail
         static int_to_chars_result convert(T x) noexcept
         {
             static_assert(std::is_unsigned_v<T>);
+            static_assert(!std::is_same_v<T, bool>);
             return int_to_decimal_chars(x);
         }
     };
@@ -234,13 +253,16 @@ namespace detail
         }
 
     private:
+        static constexpr std::size_t all_part_size
+            = (std::size_t() + ... + Parts::length)
+            + LastPart::length;
+
         template<class... Strs>
         static auto format_impl(Strs const&... strs)
         {
             constexpr auto max_size
-                = (std::size_t() + ... + Parts::length)
-                + (std::size_t() + ... + static_str_len<Strs>::value)
-                + LastPart::length;
+                = all_part_size
+                + (std::size_t() + ... + static_str_len<Strs>::value);
 
             static_assert(max_size <= MaxSize);
 
@@ -253,9 +275,8 @@ namespace detail
         static void write_to_impl(static_string<n>& str, Strs const&... strs)
         {
             constexpr auto max_size
-                = (std::size_t() + ... + Parts::length)
-                + (std::size_t() + ... + static_str_len<Strs>::value)
-                + LastPart::length;
+                = all_part_size
+                + (std::size_t() + ... + static_str_len<Strs>::value);
 
             static_assert(max_size <= n);
             impl(str, strs...);
@@ -275,10 +296,12 @@ namespace detail
                 to_static_string_view_or_char(strs)
             )));
 
-            e = append_from_bounded_av_or_char(e,
-                sized_chars_view<LastPart::length>
-                    ::assumed(BufFormat::data + LastPart::offset)
-                );
+            if constexpr (LastPart::length) {
+                e = append_from_bounded_av_or_char(e,
+                    sized_chars_view<LastPart::length>
+                        ::assumed(BufFormat::data + LastPart::offset)
+                    );
+            }
 
             *e = '\0';
 
@@ -298,27 +321,27 @@ constexpr auto operator "" _static_fmt() noexcept
     static_assert(sizeof...(cs) >= 2);
     static_assert(sizeof...(cs) < unsigned(~uint16_t()));
 
-    constexpr auto fmt = detail::make_static_fmt<cs...>();
+    using fmt = detail::fff<C, cs...>;
 
-    if constexpr (fmt.has_error) {
+    if constexpr (fmt::value.has_error) {
         // readable compiler error
         detail::static_fmt_no_error() = detail::static_fmt_error<
-            fmt.idx_err, fmt.part_count+1, fmt.fmt_err
+            fmt::value.idx_err, fmt::value.part_count+1, fmt::value.fmt_err
         >();
         return []([[maybe_unused]] auto... xs) { return static_string<0>(); };
     }
     else {
         auto to_static_str = [&](auto... ints) {
-            return detail::static_constexpr_array<fmt.string[ints]...>();
+            return detail::static_constexpr_array<fmt::value.string[ints]...>();
         };
-        auto ints = std::make_index_sequence<fmt.string_len>();
+        auto ints = std::make_index_sequence<fmt::value.string_len>();
         using static_str = decltype(detail::unroll_indexes(ints, to_static_str));
 
         auto gcc8_fix = [&](auto ints) {
             return detail::static_fmt_part_t<
-                fmt.offsets[ints],
-                fmt.lengths[ints],
-                fmt.fmts[ints]
+                fmt::value.offsets[ints],
+                fmt::value.lengths[ints],
+                fmt::value.fmts[ints]
             >();
         };
 
@@ -327,16 +350,16 @@ constexpr auto operator "" _static_fmt() noexcept
                 4096,
                 static_str,
                 detail::static_fmt_part_t<
-                    fmt.last.offset,
-                    fmt.last.length,
-                    fmt.last.fmt
+                    fmt::value.last.offset,
+                    fmt::value.last.length,
+                    fmt::value.last.fmt
                 >,
                 decltype(gcc8_fix(ints))...
             >();
         };
 
         return detail::unroll_indexes(
-            std::make_index_sequence<fmt.part_count>(),
+            std::make_index_sequence<fmt::value.part_count>(),
             to_static_fmt);
     }
 }
