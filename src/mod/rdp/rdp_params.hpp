@@ -59,6 +59,7 @@ struct ModRDPParams
     const char * client_address;
     const char * krb_armoring_user;
     const char * krb_armoring_password;
+    const char * krb_armoring_keytab_path;
 
     bool enable_tls = true;
     bool enable_nla = true;
@@ -260,6 +261,7 @@ struct ModRDPParams
         RDP_PARAMS_LOG("\"%s\"", RDP_PARAMS_LOG_GET,    client_address);
         RDP_PARAMS_LOG("\"%s\"", s_or_null,             krb_armoring_user);
         RDP_PARAMS_LOG("\"%s\"", hidden_or_null,        krb_armoring_password);
+        RDP_PARAMS_LOG("\"%s\"", s_or_null,             krb_armoring_keytab_path);
 
         RDP_PARAMS_LOG("\"%s\"", s_or_null,             application_params.primary_user_id);
         RDP_PARAMS_LOG("\"%s\"", s_or_null,             application_params.target_application);
